@@ -6,7 +6,10 @@
     <BoxContainer Orientation="Vertical" VerticalExpand="True" HorizontalExpand="True" Margin="10 5 10 10">
         <BoxContainer Orientation="Vertical" VerticalAlignment="Top" VerticalExpand="True" HorizontalExpand="True" Margin="20 0">
             <RichTextLabel Name="NameLabel"/>
-            <LineEdit Name="NameEdit"/>
+            <BoxContainer Orientation="Horizontal">
+                <LineEdit Name="NameEdit" HorizontalExpand="True"/>
+                <OptionButton Name="NameSelector"/>
+            </BoxContainer>
             <Control MinWidth="5"/>
             <RichTextLabel Name="SentenceLabel"/>
             <LineEdit Name="SentenceEdit"/>

@@ -1,5 +1,6 @@
 ﻿using Content.Client.Message;
 using Content.Client.UserInterface.Controls;
+using Robust.Client.UserInterface.Controls;
 using Content.Shared.Access.Components;
 using Content.Shared.CCVar;
 using Content.Shared.Security.Components;
@@ -39,6 +40,22 @@ public sealed partial class GenpopLockerMenu : FancyWindow
         NameEdit.OnTextChanged += _ => OnTextEdit();
         SentenceEdit.OnTextChanged += _ => OnTextEdit();
         CrimeEdit.OnTextChanged += _ => OnTextEdit();
+
+        // Populate the dropdown/option selector next to the name box.
+        // Add three items "1","2","3" and update the NameEdit when selected.
+        NameSelector.AddItem("1", 0);
+        NameSelector.AddItem("2", 1);
+        NameSelector.AddItem("3", 2);
+        NameSelector.OnItemSelected += args =>
+        {
+            // Map ids to labels (we know the labels we added above).
+            var labels = new[] { "1", "2", "3" };
+            if (args.Id >= 0 && args.Id < labels.Length)
+            {
+                NameEdit.Text = labels[args.Id];
+                OnTextEdit();
+            }
+        };
 
         DoneButton.OnPressed += _ =>
         {
