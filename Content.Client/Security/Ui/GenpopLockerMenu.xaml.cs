@@ -11,6 +11,9 @@ using Robust.Shared.Player;
 using Content.Shared.Mobs.Components;
 using Content.Shared.Access.Components;
 using Content.Shared.Security.Components;
+using Content.Shared.PDA;
+using Content.Shared.Hands.EntitySystems;
+using Content.Shared.Inventory;
 using Robust.Shared.Configuration;
 
 namespace Content.Client.Security.Ui;
@@ -53,33 +56,126 @@ public sealed partial class GenpopLockerMenu : FancyWindow
             const float range = 2.0f; // short distance
             var ents = lookup.GetEntitiesInRange(owner, range, LookupFlags.Dynamic | LookupFlags.Sundries);
             var id = 0;
+            var handsSys = entMan.System<SharedHandsSystem>();
+            var invSys = entMan.System<InventorySystem>();
+
+            EntityUid? FindIdCardEntity(EntityUid candidate, out string? outLabel)
+            {
+                outLabel = null;
+
+                // Direct ID card on the entity
+                if (entMan.TryGetComponent<IdCardComponent>(candidate, out var directId))
+                {
+                    var meta = entMan.GetComponent<MetaDataComponent>(candidate);
+                    outLabel = directId.FullName ?? meta.EntityName;
+                    return candidate;
+                }
+
+                // Genpop-specific ID (no FullName field)
+                if (entMan.HasComponent<GenpopIdCardComponent>(candidate))
+                {
+                    var meta = entMan.GetComponent<MetaDataComponent>(candidate);
+                    outLabel = meta.EntityName;
+                    return candidate;
+                }
+
+                // PDA containing an ID
+                if (entMan.TryGetComponent<PdaComponent>(candidate, out var pda) && pda.ContainedId is { Valid: true } containedId)
+                {
+                    if (entMan.TryGetComponent<IdCardComponent>(containedId, out var idOnPda))
+                    {
+                        var meta = entMan.GetComponent<MetaDataComponent>(containedId);
+                        outLabel = idOnPda.FullName ?? meta.EntityName;
+                        return containedId;
+                    }
+                    if (entMan.HasComponent<GenpopIdCardComponent>(containedId))
+                    {
+                        var meta = entMan.GetComponent<MetaDataComponent>(containedId);
+                        outLabel = meta.EntityName;
+                        return containedId;
+                    }
+                }
+
+                // If candidate is a character, check held item and inventory id slot
+                // Check held item
+                try
+                {
+                    var held = handsSys.GetActiveItem(candidate);
+                    if (held is { Valid: true })
+                    {
+                        if (entMan.TryGetComponent<IdCardComponent>(held.Value, out var idHeld))
+                        {
+                            var meta = entMan.GetComponent<MetaDataComponent>(held.Value);
+                            outLabel = idHeld.FullName ?? meta.EntityName;
+                            return held.Value;
+                        }
+                        if (entMan.TryGetComponent<PdaComponent>(held.Value, out var heldPda) && heldPda.ContainedId is { Valid: true } heldContained && entMan.TryGetComponent<IdCardComponent>(heldContained, out var idOnHeldPda))
+                        {
+                            var meta = entMan.GetComponent<MetaDataComponent>(heldContained);
+                            outLabel = idOnHeldPda.FullName ?? meta.EntityName;
+                            return heldContained;
+                        }
+                        if (entMan.HasComponent<GenpopIdCardComponent>(held.Value))
+                        {
+                            var meta = entMan.GetComponent<MetaDataComponent>(held.Value);
+                            outLabel = meta.EntityName;
+                            return held.Value;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Best-effort; ignore if hands system not available
+                }
+
+                // Check inventory 'id' slot
+                try
+                {
+                    if (invSys.TryGetSlotEntity(candidate, "id", out var slotEnt) && slotEnt is { Valid: true })
+                    {
+                        if (entMan.TryGetComponent<IdCardComponent>(slotEnt.Value, out var idSlot))
+                        {
+                            var meta = entMan.GetComponent<MetaDataComponent>(slotEnt.Value);
+                            outLabel = idSlot.FullName ?? meta.EntityName;
+                            return slotEnt.Value;
+                        }
+                        if (entMan.TryGetComponent<PdaComponent>(slotEnt.Value, out var slotPda) && slotPda.ContainedId is { Valid: true } slotContained && entMan.TryGetComponent<IdCardComponent>(slotContained, out var idOnSlotPda))
+                        {
+                            var meta = entMan.GetComponent<MetaDataComponent>(slotContained);
+                            outLabel = idOnSlotPda.FullName ?? meta.EntityName;
+                            return slotContained;
+                        }
+                        if (entMan.HasComponent<GenpopIdCardComponent>(slotEnt.Value))
+                        {
+                            var meta = entMan.GetComponent<MetaDataComponent>(slotEnt.Value);
+                            outLabel = meta.EntityName;
+                            return slotEnt.Value;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Best-effort; ignore if inventory system not available
+                }
+
+                return null;
+            }
+
             foreach (var e in ents)
             {
                 if (e == owner)
                     continue;
 
-                // Prefer nearby ID cards (crew IDs). Support both generic IdCardComponent and Genpop-specific ID cards.
-                if (!entMan.HasComponent<IdCardComponent>(e) && !entMan.HasComponent<GenpopIdCardComponent>(e))
-                    continue;
-
                 if (!entMan.TryGetComponent<MetaDataComponent>(e, out var meta))
                     continue;
 
-                string label;
-                if (entMan.TryGetComponent<IdCardComponent>(e, out var idCard))
-                {
-                    // Use the printed full name on the ID if available, otherwise fall back to the entity name.
-                    label = idCard.FullName ?? meta.EntityName;
-                }
-                else
-                {
-                    // Genpop ID cards don't store a full name field; fall back to the entity display name.
-                    label = meta.EntityName;
-                }
+                var idEntity = FindIdCardEntity(e, out var label);
+                if (idEntity == null || string.IsNullOrWhiteSpace(label))
+                    continue;
 
                 NameSelector.AddItem(label, id);
-                // Store the entity UID as metadata for this item so selection maps directly to the ID card entity.
-                NameSelector.SetItemMetadata(NameSelector.ItemCount - 1, e);
+                // Store the id card entity UID as metadata for this item.
+                NameSelector.SetItemMetadata(NameSelector.ItemCount - 1, idEntity.Value);
                 id++;
             }
 
