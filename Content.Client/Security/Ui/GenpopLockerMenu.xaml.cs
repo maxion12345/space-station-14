@@ -9,6 +9,8 @@ using Robust.Client.UserInterface.XAML;
 using Robust.Shared.GameObjects;
 using Robust.Shared.Player;
 using Content.Shared.Mobs.Components;
+using Content.Shared.Access.Components;
+using Content.Shared.Security.Components;
 using Robust.Shared.Configuration;
 
 namespace Content.Client.Security.Ui;
@@ -56,16 +58,27 @@ public sealed partial class GenpopLockerMenu : FancyWindow
                 if (e == owner)
                     continue;
 
-                // Include player-controlled entities and entities that are mobs (may have no player controller).
-                if (!entMan.HasComponent<ActorComponent>(e) && !entMan.HasComponent<MobStateComponent>(e))
+                // Prefer nearby ID cards (crew IDs). Support both generic IdCardComponent and Genpop-specific ID cards.
+                if (!entMan.HasComponent<IdCardComponent>(e) && !entMan.HasComponent<GenpopIdCardComponent>(e))
                     continue;
 
                 if (!entMan.TryGetComponent<MetaDataComponent>(e, out var meta))
                     continue;
 
-                var label = meta.EntityName;
+                string label;
+                if (entMan.TryGetComponent<IdCardComponent>(e, out var idCard))
+                {
+                    // Use the printed full name on the ID if available, otherwise fall back to the entity name.
+                    label = idCard.FullName ?? meta.EntityName;
+                }
+                else
+                {
+                    // Genpop ID cards don't store a full name field; fall back to the entity display name.
+                    label = meta.EntityName;
+                }
+
                 NameSelector.AddItem(label, id);
-                // Store the entity UID as metadata for this item so selection maps directly to the entity.
+                // Store the entity UID as metadata for this item so selection maps directly to the ID card entity.
                 NameSelector.SetItemMetadata(NameSelector.ItemCount - 1, e);
                 id++;
             }
@@ -79,10 +92,19 @@ public sealed partial class GenpopLockerMenu : FancyWindow
                 {
                     var idx = NameSelector.GetIdx(args.Id);
                     var metaObj = NameSelector.GetItemMetadata(idx);
-                    if (metaObj is EntityUid selectedEnt && entMan.TryGetComponent<MetaDataComponent>(selectedEnt, out var m2))
+                    if (metaObj is EntityUid selectedEnt)
                     {
-                        NameEdit.Text = m2.EntityName;
-                        OnTextEdit();
+                        // Prefer the name printed on the ID card (IdCardComponent.FullName) when available.
+                        if (entMan.TryGetComponent<IdCardComponent>(selectedEnt, out var selectedIdCard) && !string.IsNullOrWhiteSpace(selectedIdCard.FullName))
+                        {
+                            NameEdit.Text = selectedIdCard.FullName!;
+                            OnTextEdit();
+                        }
+                        else if (entMan.TryGetComponent<MetaDataComponent>(selectedEnt, out var m2))
+                        {
+                            NameEdit.Text = m2.EntityName;
+                            OnTextEdit();
+                        }
                     }
                 }
                 catch
