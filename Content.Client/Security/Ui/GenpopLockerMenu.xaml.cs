@@ -49,7 +49,21 @@ public sealed partial class GenpopLockerMenu : FancyWindow
         SentenceEdit.OnTextChanged += _ => OnTextEdit();
         CrimeEdit.OnTextChanged += _ => OnTextEdit();
 
-        // Populate the dropdown/option selector with nearby character names (short range).
+        // Populate the dropdown/option selector with nearby ID information (short range).
+        //
+        // Strategy and rationale:
+        // - We prefer to display the printed name on an ID card (crew ID) rather than the mob/entity display
+        //   name because lockers should be assigned to identities found on physical IDs.
+        // - Nearby entities may themselves be ID cards, PDAs that *contain* an ID (`PdaComponent.ContainedId`),
+        //   a character holding an ID in their hands, or a character with an ID in their inventory `"id"` slot.
+        // - We therefore enumerate nearby entities and attempt to resolve an ID-card entity for each candidate
+        //   using a small helper (`FindIdCardEntity`). The helper returns the actual ID entity (which may be
+        //   different from the candidate, e.g. a PDA's contained id) and a label string to display.
+        // - Each `OptionButton` item stores the resolved ID entity's `EntityUid` as metadata so selection
+        //   directly maps back to the exact ID entity (avoids relying on positional ordering).
+        // - This entire process is best-effort on the client: systems may not be available or entities may
+        //   be missing components. We wrap the lookup in try/catch and silently skip entries that cannot be
+        //   resolved so the UI remains stable.
         try
         {
             var lookup = entMan.System<EntityLookupSystem>();
@@ -61,17 +75,22 @@ public sealed partial class GenpopLockerMenu : FancyWindow
 
             EntityUid? FindIdCardEntity(EntityUid candidate, out string? outLabel)
             {
+                // Returns: the EntityUid of an ID-card entity (may be the candidate itself or an inner entity
+                // such as a PDA's contained id) and an appropriate label to display on the option.
+                // If nothing is found returns null and sets outLabel to null.
                 outLabel = null;
 
-                // Direct ID card on the entity
+                // 1) Direct ID card on the entity: common case when a loose ID card is on the ground.
                 if (entMan.TryGetComponent<IdCardComponent>(candidate, out var directId))
                 {
                     var meta = entMan.GetComponent<MetaDataComponent>(candidate);
+                    // Prefer the printed FullName on the card if present, otherwise the entity's displayed name.
                     outLabel = directId.FullName ?? meta.EntityName;
                     return candidate;
                 }
 
-                // Genpop-specific ID (no FullName field)
+                // 2) Genpop-specific ID entity: these don't necessarily have a FullName field, so fall back
+                //    to the entity display name.
                 if (entMan.HasComponent<GenpopIdCardComponent>(candidate))
                 {
                     var meta = entMan.GetComponent<MetaDataComponent>(candidate);
@@ -79,7 +98,8 @@ public sealed partial class GenpopLockerMenu : FancyWindow
                     return candidate;
                 }
 
-                // PDA containing an ID
+                // 3) PDA that contains an ID: some PDAs embed an ID entity in `PdaComponent.ContainedId`.
+                //    In that case prefer the contained id entity and its printed name.
                 if (entMan.TryGetComponent<PdaComponent>(candidate, out var pda) && pda.ContainedId is { Valid: true } containedId)
                 {
                     if (entMan.TryGetComponent<IdCardComponent>(containedId, out var idOnPda))
@@ -96,8 +116,8 @@ public sealed partial class GenpopLockerMenu : FancyWindow
                     }
                 }
 
-                // If candidate is a character, check held item and inventory id slot
-                // Check held item
+                // 4) If the candidate is a character, check what they are holding (active hand) for an ID
+                //    card or PDA containing an ID. This catches players who hold an ID or keep a PDA in hand.
                 try
                 {
                     var held = handsSys.GetActiveItem(candidate);
@@ -125,10 +145,11 @@ public sealed partial class GenpopLockerMenu : FancyWindow
                 }
                 catch
                 {
-                    // Best-effort; ignore if hands system not available
+                    // Best-effort; ignore if hands system not available on this client build.
                 }
 
-                // Check inventory 'id' slot
+                // 5) Check the character's inventory 'id' slot. Many characters store their ID in a dedicated
+                //    slot (inventory slot named "id"). This can be an ID entity or a PDA that contains an ID.
                 try
                 {
                     if (invSys.TryGetSlotEntity(candidate, "id", out var slotEnt) && slotEnt is { Valid: true })
@@ -155,9 +176,10 @@ public sealed partial class GenpopLockerMenu : FancyWindow
                 }
                 catch
                 {
-                    // Best-effort; ignore if inventory system not available
+                    // Best-effort; ignore if inventory system not available on this client build.
                 }
 
+                // No ID found for this candidate.
                 return null;
             }
 
