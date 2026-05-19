@@ -92,6 +92,67 @@
     knockdownAmount: 0.5
 
 - type: entity
+  name: taser bolt projectile
+  id: BulletTaserProjectile # Projectile instead of hitscan, this lets us have a taser shotgun using the count/spread options in the spread component.
+  parent: BaseBulletStarlight
+  categories: [ HideSpawnMenu ]
+  components:
+  - type: FlyBySound
+    sound:
+      collection: EnergyMiss
+      params:
+        volume: 5
+  - type: Sprite
+    noRot: true
+    sprite: Objects/Weapons/Guns/Projectiles/projectiles2.rsi
+    color: "#ffff33"
+    layers:
+    - state: spark
+      shader: unshaded
+  - type: Physics
+  - type: Fixtures
+    fixtures:
+      projectile:
+        shape:
+          !type:PhysShapeAabb
+          bounds: "-0.15,-0.45,0.15,0.15"
+        hard: false
+        mask:
+        - Impassable
+        - BulletImpassable
+      fly-by: *flybyfixture
+  - type: Ammo
+  - type: Projectile
+    damage:
+      types:
+        Heat: 0 # Damaging your suspects is bad.
+    soundHit:
+      path: "/Audio/Weapons/Guns/Hits/taser_hit.ogg"
+    forceSound: true
+  - type: TimedDespawn
+    lifetime: 0.1 # About 4 tiles of travel. You aren't winning a gunfight with this unless you get really close.
+  - type: StaminaDamageOnCollide
+    damage: 33
+  - type: StunOnCollide # 0.5 seconds of knockdown matches the hitscan variant.
+    stunAmount: 0
+    knockdownAmount: 0.5
+    drop: false
+    slowdownAmount: 2.5
+    walkSpeedModifier: 0.5
+    sprintSpeedModifier: 0.5
+
+- type: entity
+  name: taser bolt projectile spread
+  id: BulletTaserProjectileSpread
+  parent: BulletTaserProjectile
+  categories: [ HideSpawnMenu ]
+  components:
+  - type: ProjectileSpread
+    proto: BulletTaserProjectile
+    count: 5
+    spread: 20 # Very wide spread, this is a crowd control weapon. You won't be landing more then one hit one a single person unless you're right next to them.
+
+- type: entity
   id: BaseBulletRubber
   parent: BaseBulletStarlight
   categories: [ HideSpawnMenu ]
